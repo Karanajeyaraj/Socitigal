@@ -5,7 +5,6 @@ import SwiftUI
 struct SocitigalApp: App {
     var body: some Scene {
         WindowGroup {
-            RegisterPage()
+            DashboardPage()
         }
     }}
-

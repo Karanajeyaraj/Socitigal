@@ -2,11 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Allow HTTP connections (for development) -->
     <key>NSAppTransportSecurity</key>
     <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
+        <!-- This allows HTTP for your specific domain -->
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>rjt.4ec.mytemp.website</key>
+            <dict>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <true/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+                <key>NSAllowsArbitraryLoadsInWebContent</key>
+                <true/>
+            </dict>
+        </dict>
     </dict>
 </dict>
 </plist>

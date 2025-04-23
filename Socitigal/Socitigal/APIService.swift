@@ -26,92 +26,105 @@ struct LoginRequest: Codable {
     let usertype: String
 }
 
-// MARK: - API Service
+// MARK: - Login Response
+struct LoginResponse: Codable {
+    let success: Bool?
+    let message: String
+}
+
 class APIService {
     static let shared = APIService()
 
-    // REGISTER USER
-    func registerUser(data: RegistrationData, completion: @escaping (Result<String, Error>) -> Void) {
-        guard let url = URL(string: "http://192.168.0.104:3000/register") else {
-            completion(.failure(NSError(domain: "InvalidURL", code: -1, userInfo: nil)))
-            return
+    // MARK: - Helper Method to Create Request
+    private func makeRequest<T: Codable>(urlString: String, payload: T) throws -> URLRequest {
+        guard let url = URL(string: urlString) else {
+            throw NSError(domain: "InvalidURL", code: -1, userInfo: nil)
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(payload)
 
-        do {
-            let jsonData = try JSONEncoder().encode(data)
-            request.httpBody = jsonData
-        } catch {
-            completion(.failure(error))
-            return
-        }
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                completion(.failure(NSError(domain: "InvalidResponse", code: -2, userInfo: nil)))
-                return
-            }
-
-            if (200...299).contains(httpResponse.statusCode) {
-                completion(.success("Registered Successfully"))
-            } else {
-                let errorMessage = String(data: data ?? Data(), encoding: .utf8) ?? "Unknown error"
-                completion(.failure(NSError(domain: "", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMessage])))
-            }
-        }.resume()
+        return request
     }
 
-    // LOGIN USER
-    func loginUser(data: LoginRequest, completion: @escaping (Result<String, Error>) -> Void) {
-        guard let url = URL(string: "http://192.168.0.104:3000/login") else {
-            completion(.failure(NSError(domain: "InvalidURL", code: -1, userInfo: nil)))
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
+    // MARK: - Register User
+    func registerUser(data: RegistrationData, completion: @escaping (Result<String, Error>) -> Void) {
         do {
-            let jsonData = try JSONEncoder().encode(data)
-            request.httpBody = jsonData
+            let request = try makeRequest(urlString: "http://rjt.4ec.mytemp.website/SocietyManagementAPI/register.php", payload: data)
+
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                self.handleResponse(data: data, response: response, error: error, completion: completion)
+            }.resume()
         } catch {
+            completion(.failure(error))
+        }
+    }
+
+    // MARK: - Login User
+    func loginUser(data: LoginRequest, completion: @escaping (Result<String, Error>) -> Void) {
+        do {
+            let request = try makeRequest(urlString: "http://rjt.4ec.mytemp.website/SocietyManagementAPI/login.php", payload: data)
+
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                self.handleLoginResponse(data: data, response: response, error: error, completion: completion)
+            }.resume()
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    // MARK: - General Response Handler
+    private func handleResponse(data: Data?, response: URLResponse?, error: Error?, completion: @escaping (Result<String, Error>) -> Void) {
+        if let error = error {
             completion(.failure(error))
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
+        guard let httpResponse = response as? HTTPURLResponse,
+              let responseData = data else {
+            completion(.failure(NSError(domain: "InvalidResponse", code: -2, userInfo: nil)))
+            return
+        }
 
-            guard let httpResponse = response as? HTTPURLResponse,
-                  let responseData = data else {
-                completion(.failure(NSError(domain: "NoResponse", code: -2, userInfo: nil)))
-                return
-            }
+        if (200...299).contains(httpResponse.statusCode) {
+            let message = String(data: responseData, encoding: .utf8) ?? "Success"
+            completion(.success(message))
+        } else {
+            let errorMsg = String(data: responseData, encoding: .utf8) ?? "Unknown error"
+            completion(.failure(NSError(domain: "", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+        }
+    }
 
-            if (200...299).contains(httpResponse.statusCode) {
-                if let result = try? JSONDecoder().decode([String: String].self, from: responseData),
-                   let message = result["message"] {
-                    completion(.success(message))
-                } else {
-                    completion(.failure(NSError(domain: "InvalidResponse", code: -3, userInfo: nil)))
-                }
-            } else {
-                let errorMsg = String(data: data ?? Data(), encoding: .utf8) ?? "Unknown error"
-                completion(.failure(NSError(domain: "", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+    // MARK: - Login Response Handler with JSON Decoding
+    private func handleLoginResponse(data: Data?, response: URLResponse?, error: Error?, completion: @escaping (Result<String, Error>) -> Void) {
+        if let error = error {
+            completion(.failure(error))
+            return
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              let responseData = data else {
+            completion(.failure(NSError(domain: "InvalidResponse", code: -2, userInfo: nil)))
+            return
+        }
+
+        print("📡 Status Code: \(httpResponse.statusCode)")
+        print("📦 Raw Response: \(String(data: responseData, encoding: .utf8) ?? "nil")")
+
+        if (200...299).contains(httpResponse.statusCode) {
+            do {
+                let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: responseData)
+                completion(.success(loginResponse.message))
+            } catch {
+                let fallback = String(data: responseData, encoding: .utf8) ?? "Login succeeded"
+                completion(.success(fallback))
             }
-        }.resume()
+        } else {
+            let errorMsg = String(data: responseData, encoding: .utf8) ?? "Login failed"
+            completion(.failure(NSError(domain: "", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+        }
     }
 }
 
